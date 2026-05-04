@@ -1,0 +1,35 @@
+name: CI - Validação Ethnos CLI
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do Código
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar Dependências
+        run: npm install
+        # Garante que o Inquirer, Prisma e outras libs estão instaláveis
+
+      - name: Validar Schema do Prisma
+        run: npx prisma validate
+        # Garante que o modelo do SQLite em src/database está correto
+
+      - name: Gerar Cliente Prisma
+        run: npx prisma generate
+        # Simula a preparação do ambiente para a engine[cite: 2]
+
+      - name: Executar Testes de Unidade
+        run: npm test
+        # Executa os testes da engine e lógica de menus[cite: 2]
