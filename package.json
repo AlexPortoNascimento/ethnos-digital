@@ -1,6 +1,6 @@
 {
   "name": "ethnos-digital",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Jogo de tabuleiro digital criado com o objetivo de realizar o trabalho de faculdade da matéria **TCC00363 - Gerência de Projeto e Manutenção de Software - UFF Niterói - 2026.1**.",
   "main": "src/index.js",
   "type": "module",
