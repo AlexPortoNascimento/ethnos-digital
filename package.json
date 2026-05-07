@@ -20,7 +20,10 @@
     "inquirer": "^13.4.2"
   },
   "devDependencies": {
+    "@types/inquirer": "^9.0.9",
+    "@types/node": "^25.6.1",
+    "husky": "^8.0.0",
     "prisma": "^7.8.0",
-    "husky": "^8.0.0"
+    "typescript": "^6.0.3"
   }
 }
