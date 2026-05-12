@@ -10,9 +10,10 @@ const prisma = new PrismaClient();
 const repository = new GameRepository(prisma);
 const deckService = new DeckService(prisma);
 const validator = new MoveValidator();
+const scoreCalculator = new ScoreCalculator();
 
 // Injeta as dependências no motor principal
-const engine = new GameEngine(prisma, deckService, validator, repository);
+const engine = new GameEngine(prisma, deckService, validator, scoreCalculator);
 
 // Agora o motor está pronto para rodar!
 await engine.initGame('id-do-save-01');
