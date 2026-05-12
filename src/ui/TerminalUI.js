@@ -9,6 +9,13 @@ export class TerminalUI {
   }
 
   async start() {
+    console.log(chalk.gray("Iniciando interface gráfica...")); // DEBUG
+    
+    if (!this.engine.state.players || this.engine.state.players.length === 0) {
+      console.log(chalk.red("Erro: Estado do jogo não possui jogadores carregados."));
+      return;
+    }
+
     while (this.engine.state.currentAge <= 3) {
       for (const player of this.engine.state.players) {
         if (this.engine.state.currentAge > 3) break;

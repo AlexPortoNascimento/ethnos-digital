@@ -7,7 +7,7 @@ export class GameEngine {
 
     // Estado volátil (em memória durante o processamento do turno)
     this.state = {
-      gameId: null,
+      Id: null,
       players: [],
       kingdoms: [],
       currentAge: 1,
@@ -18,9 +18,38 @@ export class GameEngine {
   /**
    * Inicializa um novo jogo ou carrega um existente
    */
-  async initGame(gameId) {
-    this.state.gameId = gameId;
-    await this._loadState();
+  async initGame(id) {
+    const gameId = parseInt(id);
+  
+    const state = await this.prisma.gameState.findUnique({
+      where: { id: gameId },
+      include: {
+        players: {
+          include: {
+            cards: { where: { location: 'HAND' } }
+          }
+        },
+        kingdoms: {
+          include: {
+            markers: { include: { player: true } }
+          }
+        },
+        // ALTERE DE 'market' PARA 'cards'
+        cards: {
+          where: { location: 'MARKET' }
+        }
+      }
+    });
+
+    if (!state) throw new Error(`Jogo com ID ${gameId} not found.`);
+
+    // Mapeie 'cards' para 'market' para manter compatibilidade com sua UI
+    this.state = {
+      ...state,
+      market: state.cards // Agora a UI encontrará this.engine.state.market
+    };
+  
+    return this.state;
   }
 
   /**
@@ -82,34 +111,48 @@ export class GameEngine {
     }
   }
 
-  /**
+/**
    * Compra de carta e verificação de dragões
    */
-  async drawCard(playerId, source) {
-    // Lógica para pegar a carta com menor 'position' no deck
+  async drawCard(playerId, source = 'DECK') {
+    // 1. Busca a próxima carta do topo do baralho (usando o campo 'order')
     const card = await this.prisma.card.findFirst({
-      where: { gameStateId: this.state.gameId, location: 'DECK' },
-      orderBy: { position: 'asc' }
+      where: { 
+        gameStateId: this.state.id, // Certifique-se que é .id e não .gameId
+        location: 'DECK' 
+      },
+      orderBy: { order: 'asc' } // O topo do deck é a ordem 0, 1, 2...
     });
 
-    if (card.tribe === 'Dragon') {
+    if (!card) return null;
+
+    // 2. Lógica para Dragões
+    // Verificamos pelo booleano isDragon ou pela tribo (ajustado para 'DRAGON' em maiúsculo)
+    if (card.isDragon || card.tribe === 'DRAGON') {
       this.state.dragonsFound++;
       console.log(`🔥 Dragão encontrado! (${this.state.dragonsFound}/3)`);
 
-      // Se for o 3º dragão, a Era acaba imediatamente
+      // Marca o dragão como descartado/removido para não ser comprado de novo
+      await this.prisma.card.update({ 
+        where: { id: card.id }, 
+        data: { location: 'DISCARD' } 
+      });
+
       if (this.state.dragonsFound >= 3) {
-        return this.evaluateEndAge();
+        return await this.evaluateEndAge(); // Encerra a era
       }
 
-      // Dragões comprados são removidos do jogo (p. 9) e o jogador compra outra
-      await this.prisma.card.update({ where: { id: card.id }, data: { location: 'REMOVED' } });
+      // Se não for o 3º, o jogador compra outra carta automaticamente
       return this.drawCard(playerId, 'DECK');
     }
 
-    // Move carta para a mão do jogador
-    await this.prisma.card.update({
+    // 3. Move carta para a mão do jogador (CORREÇÃO DE CAMPOS)
+    return await this.prisma.card.update({
       where: { id: card.id },
-      data: { location: 'HAND', playerId: playerId, position: null }
+      data: { 
+        location: 'HAND', 
+        ownerId: playerId // Alterado de playerId para ownerId conforme seu Schema
+      }
     });
   }
 
@@ -226,8 +269,8 @@ async handlePlayBand(player, cardIds, leaderId) {
   async _revealToMarket() {
     // Pega a carta do topo do deck
     const card = await this.prisma.card.findFirst({
-      where: { gameStateId: this.state.gameId, location: 'DECK' },
-      orderBy: { order: 'asc' } // Usando 'order' conforme seu schema
+      where: { location: 'DECK', gameStateId: this.state.id },
+      orderBy: { order: 'asc' }
     });
 
     if (card) {
