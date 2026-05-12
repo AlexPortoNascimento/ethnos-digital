@@ -84,9 +84,21 @@ export class TerminalUI {
 
   showHand(player) {
     console.log(chalk.bold(`\nSUA MÃO:`));
-    const handStr = player.hand.map(c => 
-      chalk.keyword(c.color.toLowerCase())(c.tribe)
-    ).join(' | ');
+    
+    // O Prisma carrega como 'cards', então garantimos que seja um array
+    const cards = player.cards || []; 
+    
+    if (cards.length === 0) {
+      console.log(chalk.gray('  (Sua mão está vazia)'));
+      return;
+    }
+
+    const handStr = cards.map(c => {
+      // Usando a lógica de cores segura que criamos no Renderer
+      const style = Renderer.colorMap[c.color.toLowerCase()] || chalk.white;
+      return style(`[${c.tribe}]`);
+    }).join(' | ');
+
     console.log(`  ${handStr}\n`);
   }
 }
