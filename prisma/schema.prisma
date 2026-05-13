@@ -47,7 +47,7 @@ model Player {
 
 model Kingdom {
   id         Int      @id @default(autoincrement())
-  name       String
+  name       String   @unique
   gloryAge1  Int
   gloryAge2  Int
   gloryAge3  Int

@@ -2,8 +2,18 @@ import chalk from 'chalk';
 import Table from 'cli-table3';
 
 export class Renderer {
-  // Mapa de cores para substituir o .keyword() que está falhando
+  
+
+  // Mapeamento de cores para as Tribos/Cartas
   static colorMap = {
+    'giant': chalk.red,
+    'troll': chalk.hex('#FFA500'),
+    'skeleton': chalk.gray,
+    'dwarf': chalk.yellow,
+    'elf': chalk.green,
+    'wizard': chalk.blue,
+    'orc': chalk.magenta,
+
     red: chalk.red,
     blue: chalk.blue,
     green: chalk.green,
@@ -16,6 +26,7 @@ export class Renderer {
   };
 
   static getStyle(colorName) {
+    if (!colorName) return chalk.white;
     const color = colorName?.toLowerCase();
     return this.colorMap[color] || chalk.white;
   }

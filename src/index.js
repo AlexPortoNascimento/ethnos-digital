@@ -17,15 +17,8 @@ async function main() {
 
   // Injeta as dependências no motor principal
   const engine = new GameEngine(prisma, deckService, validator, scoreCalculator);
-
-  // Agora o motor está pronto para rodar!
-  await engine.initGame(1);
-
-  if (engine.state.currentAge === 1 && engine.state.dragonsFound === 0) {
-    await engine.startNewAge();
-  }
-
   const ui = new TerminalUI(engine);
+
   await ui.start();
 }
 

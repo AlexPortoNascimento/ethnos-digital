@@ -8,21 +8,42 @@ export class TerminalUI {
     this.prompts = new PromptHandler();
   }
 
-  async start() {
-    console.log(chalk.gray("Iniciando interface gráfica...")); // DEBUG
-    
-    if (!this.engine.state.players || this.engine.state.players.length === 0) {
-      console.log(chalk.red("Erro: Estado do jogo não possui jogadores carregados."));
-      return;
-    }
+  async ensureGameIsReady() {
+    // Verifica se já existe um jogo no banco (id: 1 por simplicidade no seu model)
+    const existingGame = await this.engine.prisma.gameState.findFirst({include: { players: true }});
 
-    while (this.engine.state.currentAge <= 3) {
-      for (const player of this.engine.state.players) {
-        if (this.engine.state.currentAge > 3) break;
-        await this.runTurn(player);
-      }
+    if (!existingGame || !existingGame.gameStarted || existingGame.players.length === 0) {
+      
+      const count = await this.prompts.askPlayerCount();
+      const names = await this.prompts.askPlayerNames(count);
+      
+      await this.engine.setupNewGame(names);
+    } else {
+      await this.engine.initGame(existingGame.id);
     }
-    console.log(chalk.bold.green("\nFIM DE JOGO! OBRIGADO POR JOGAR."));
+  }
+
+  async start() {
+  // 1. Garante que o jogo exista e tenha jogadores antes de qualquer coisa
+  await this.ensureGameIsReady(); 
+
+  console.log(chalk.gray("Iniciando interface gráfica..."));
+
+  if (!this.engine.state.players || this.engine.state.players.length === 0) {
+    console.log(chalk.red("Erro: Estado do jogo não possui jogadores carregados."));
+    return;
+  }
+
+  while (this.engine.state.currentAge <= 3) {
+    for (const player of this.engine.state.players) {
+      // Verifica se a era mudou durante o turno de alguém (ex: comprou o 3º dragão)
+      if (this.engine.state.currentAge > 3) break;
+      
+      await this.runTurn(player);
+    }
+  }
+  
+  console.log(chalk.bold.green("\nFIM DE JOGO! OBRIGADO POR JOGAR."));
   }
 
   async runTurn(player) {
@@ -86,7 +107,7 @@ export class TerminalUI {
     console.log(chalk.bold(`\nSUA MÃO:`));
     
     // O Prisma carrega como 'cards', então garantimos que seja um array
-    const cards = player.cards || []; 
+    const cards = player.hand|| []; 
     
     if (cards.length === 0) {
       console.log(chalk.gray('  (Sua mão está vazia)'));

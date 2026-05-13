@@ -5,28 +5,85 @@ export class GameEngine {
     this.moveValidator = moveValidator;
     this.scoreCalculator = scoreCalculator;
 
-    // Estado volátil (em memória durante o processamento do turno)
+    // Estado em memória sincronizado com o Banco de Dados
     this.state = {
-      Id: null,
+      id: null,
       players: [],
       kingdoms: [],
+      market: [],
       currentAge: 1,
       dragonsFound: 0
     };
   }
 
   /**
-   * Inicializa um novo jogo ou carrega um existente
+   * Configuração inicial de uma nova partida
+   */
+  async setupNewGame(playerNames) {
+    // Reinos padrão conforme o manual (Cores/Nomes)
+    const kingdomsData = [
+      { name: 'GIANT', gloryAge1: 0, gloryAge2: 0, gloryAge3: 0 },
+      { name: 'WIZARD', gloryAge1: 0, gloryAge2: 0, gloryAge3: 0 },
+      { name: 'TROLL', gloryAge1: 0, gloryAge2: 0, gloryAge3: 0 },
+      { name: 'ORC', gloryAge1: 0, gloryAge2: 0, gloryAge3: 0 },
+      { name: 'DWARVE', gloryAge1: 0, gloryAge2: 0, gloryAge3: 0 },
+      { name: 'ELF', gloryAge1: 0, gloryAge2: 0, gloryAge3: 0 },
+    ];
+
+    const game = await this.prisma.$transaction(async (tx) => {
+      // 1. Cria o GameState
+      const newGame = await tx.gameState.create({
+        data: {
+          currentAge: 1,
+          dragonsFound: 0,
+          gameStarted: true,
+          activeTribes: "GIANT,WIZARD,TROLL,ORC,DWARVE,ELF"
+        }
+      });
+
+      // 2. Cria os Jogadores
+      for (const name of playerNames) {
+        await tx.player.create({
+          data: {
+            name,
+            gameStateId: newGame.id,
+            points: 0
+          }
+        });
+      }
+
+      // 3. Cria os Reinos
+      for (const k of kingdomsData) {
+        await tx.kingdom.create({
+          data: { ...k, gameStateId: newGame.id }
+        });
+      }
+
+      return newGame;
+    });
+
+    await this.initGame(game.id);
+    await this.startNewAge();
+    return game.id;
+  }
+
+  /**
+   * Carrega o estado completo do banco para a memória
    */
   async initGame(id) {
     const gameId = parseInt(id);
-  
-    const state = await this.prisma.gameState.findUnique({
+    await this._loadState(gameId);
+    return this.state;
+  }
+
+  async _loadState(gameId) {
+    const data = await this.prisma.gameState.findUnique({
       where: { id: gameId },
       include: {
         players: {
           include: {
-            cards: { where: { location: 'HAND' } }
+            cards: { where: { location: 'HAND' } },
+            markers: true
           }
         },
         kingdoms: {
@@ -34,206 +91,121 @@ export class GameEngine {
             markers: { include: { player: true } }
           }
         },
-        // ALTERE DE 'market' PARA 'cards'
         cards: {
           where: { location: 'MARKET' }
         }
       }
     });
 
-    if (!state) throw new Error(`Jogo com ID ${gameId} not found.`);
+    if (!data) throw new Error(`Jogo ${gameId} não encontrado.`);
 
-    // Mapeie 'cards' para 'market' para manter compatibilidade com sua UI
     this.state = {
-      ...state,
-      market: state.cards // Agora a UI encontrará this.engine.state.market
+      id: data.id,
+      currentAge: data.currentAge,
+      dragonsFound: data.dragonsFound,
+      players: data.players.map(p => ({
+        ...p,
+        hand: p.cards // Mapeia para facilitar acesso na UI
+      })),
+      kingdoms: data.kingdoms,
+      market: data.cards
     };
-  
-    return this.state;
   }
 
   /**
-   * Prepara uma nova Era (Age)
-   * Regras: Resetar deck, dar 1 carta a cada jogador, preparar mercado.
+   * Inicializa uma Era (Age) conforme Manual p. 5
    */
   async startNewAge() {
     console.log(`--- Iniciando Era ${this.state.currentAge} ---`);
 
-    // 1. Resetar dragões e preparar deck via DeckService
-    this.state.dragonsFound = 0;
-    await this.deckService.setupDeckForNewAge(this.state.gameId);
+    // 1. Reset de Dragões
+    await this.prisma.gameState.update({
+      where: { id: this.state.id },
+      data: { dragonsFound: 0 }
+    });
 
-    // 2. Dar 1 carta inicial para cada jogador (Regra p. 5)
+    // 2. Preparar baralho (DeckService lida com o shuffle e ordem)
+    await this.deckService.setupDeckForNewAge(this.state.id, this.state.players.length);
+
+    // 3. Distribuição inicial: 1 carta para cada jogador
     for (const player of this.state.players) {
-      await this.drawCard(player.id, 'DECK');
+      await this.drawCard(player.id);
     }
 
-    // 3. Abrir o Mercado (2 cartas por jogador)
+    // 4. Mercado inicial: 2 cartas por jogador
     const marketSize = this.state.players.length * 2;
     for (let i = 0; i < marketSize; i++) {
       await this._revealToMarket();
     }
 
-    await this._saveState();
+    await this._loadState(this.state.id);
   }
 
   /**
-   * Processa a ação escolhida pelo jogador
-   * @param {string} playerId 
-   * @param {Object} action { type: 'RECRUIT' | 'PLAY_BAND', data: ... }
+   * Compra de carta com Regra dos Dragões (Manual p. 9)
    */
-  async processTurn(playerId, action) {
-    const player = this.state.players.find(p => p.id === playerId);
-
-    if (action.type === 'RECRUIT') {
-      await this.handleRecruit(player, action.data);
-    } else if (action.type === 'PLAY_BAND') {
-      await this.handlePlayBand(player, action.data);
-    }
-
-    // Salva o estado após cada ação bem-sucedida
-    await this._saveState();
-  }
-
-  /**
-   * Lógica de Recrutamento
-   */
-  async handleRecruit(player, source) {
-    // Validação via MoveValidator
-    if (!this.moveValidator.canRecruit(player, this.state)) {
-      throw new Error("Limite de mão atingido ou ação inválida.");
-    }
-
-    if (source.type === 'DECK') {
-      await this.drawCard(player.id, 'DECK');
-    } else {
-      await this.drawFromMarket(player.id, source.cardId);
-    }
-  }
-
-/**
-   * Compra de carta e verificação de dragões
-   */
-  async drawCard(playerId, source = 'DECK') {
-    // 1. Busca a próxima carta do topo do baralho (usando o campo 'order')
+  async drawCard(playerId) {
     const card = await this.prisma.card.findFirst({
-      where: { 
-        gameStateId: this.state.id, // Certifique-se que é .id e não .gameId
-        location: 'DECK' 
-      },
-      orderBy: { order: 'asc' } // O topo do deck é a ordem 0, 1, 2...
+      where: { gameStateId: this.state.id, location: 'DECK' },
+      orderBy: { order: 'asc' }
     });
 
     if (!card) return null;
 
-    // 2. Lógica para Dragões
-    // Verificamos pelo booleano isDragon ou pela tribo (ajustado para 'DRAGON' em maiúsculo)
     if (card.isDragon || card.tribe === 'DRAGON') {
-      this.state.dragonsFound++;
-      console.log(`🔥 Dragão encontrado! (${this.state.dragonsFound}/3)`);
+      const updatedGame = await this.prisma.gameState.update({
+        where: { id: this.state.id },
+        data: { dragonsFound: { increment: 1 } }
+      });
 
-      // Marca o dragão como descartado/removido para não ser comprado de novo
-      await this.prisma.card.update({ 
-        where: { id: card.id }, 
-        data: { location: 'DISCARD' } 
+      this.state.dragonsFound = updatedGame.dragonsFound;
+
+      // Remove dragão do jogo
+      await this.prisma.card.update({
+        where: { id: card.id },
+        data: { location: 'OUT_OF_GAME' }
       });
 
       if (this.state.dragonsFound >= 3) {
-        return await this.evaluateEndAge(); // Encerra a era
+        return await this.evaluateEndAge();
       }
 
-      // Se não for o 3º, o jogador compra outra carta automaticamente
-      return this.drawCard(playerId, 'DECK');
+      // Recursão: compra a próxima após achar um dragão
+      return this.drawCard(playerId);
     }
 
-    // 3. Move carta para a mão do jogador (CORREÇÃO DE CAMPOS)
     return await this.prisma.card.update({
       where: { id: card.id },
-      data: { 
-        location: 'HAND', 
-        ownerId: playerId // Alterado de playerId para ownerId conforme seu Schema
-      }
+      data: { location: 'HAND', ownerId: playerId }
     });
   }
 
-
-
   /**
-   * Finalização da Era e Cálculo de Pontos
+   * Jogar um Bando (Regra p. 7)
    */
-  async evaluateEndAge() {
-    console.log("🏁 Fim da Era! Calculando glória...");
-
-    // Delega o cálculo para o serviço especializado
-    const gloryResults = this.scoreCalculator.calculateAgeGlory(this.state);
-
-    // Persiste glória nos jogadores
-    // ... lógica de update ...
-
-    this.state.currentAge++;
-    if (this.state.currentAge > 3) {
-      this.endGame();
-    } else {
-      await this.startNewAge();
-    }
-  }
-
-  // Métodos Privados de Persistência
-  async _saveState() {
-    // Aqui você chamaria o PrismaRepository para salvar o snapshot
-  }
-
-  async _loadState() {
-    // Carrega jogadores, reinos e estado atual do banco
-  }
-
-  async _revealToMarket() {
-    // Tira do deck e coloca no slot de mercado (location: 'MARKET')
-  }
-
-async handlePlayBand(player, cardIds, leaderId) {
-    // 1. Identifica as cartas na mão do jogador
+  async handlePlayBand(player, cardIds, leaderId) {
     const selectedCards = player.hand.filter(c => cardIds.includes(c.id));
-
-    // 2. Validação de Regra: A banda é válida? (Mesma tribo ou Cor)
+    
     if (!this.moveValidator.canPlayBand(selectedCards)) {
-      throw new Error("Banda inválida! As cartas devem ser da mesma tribo ou da mesma cor.");
+      throw new Error("Bando inválido! Devem ser da mesma tribo ou cor.");
     }
 
     const leader = selectedCards.find(c => c.id === leaderId);
-    if (!leader) throw new Error("Líder não encontrado na seleção.");
 
-    // 3. Lógica de Marcador de Controle (Regra p. 7, item 3)
-    // Encontramos o reino que combina com a COR do líder
-    const targetKingdom = await this.prisma.kingdom.findFirst({
-      where: { name: leader.color } 
-    });
-
+    // 1. Posicionar Marcador de Controle
+    const targetKingdom = this.state.kingdoms.find(k => k.name === leader.color);
     if (targetKingdom) {
-      if (this.moveValidator.canPlaceMarker(player, targetKingdom, selectedCards.length)) {
+      const canPlace = this.moveValidator.canPlaceMarker(player, targetKingdom, selectedCards.length);
+      if (canPlace) {
         await this.prisma.controlMarker.upsert({
-          where: { 
-            playerId_kingdomId: { playerId: player.id, kingdomId: targetKingdom.id } 
-          },
+          where: { playerId_kingdomId: { playerId: player.id, kingdomId: targetKingdom.id } },
           update: { count: { increment: 1 } },
           create: { playerId: player.id, kingdomId: targetKingdom.id, count: 1 }
         });
-        console.log(`✅ Marcador de controle adicionado em ${targetKingdom.name}`);
       }
     }
 
-    // 4. PERSISTÊNCIA DAS CARTAS DA BANDA
-    // Move as cartas selecionadas para a área de bandas do jogador
-    await this.prisma.card.updateMany({
-      where: { id: { in: cardIds } },
-      data: { 
-        location: 'BAND', 
-        ownerId: player.id,
-        order: null // Sai do baralho definitivamente
-      }
-    });
-
-    // Criamos o registro da banda no banco para histórico e pontuação posterior
+    // 2. Persistir o Bando
     await this.prisma.band.create({
       data: {
         playerId: player.id,
@@ -243,33 +215,35 @@ async handlePlayBand(player, cardIds, leaderId) {
       }
     });
 
-    // 5. A REGRA DE OURO (Regra p. 7, item 5):
-    // "Quaisquer cartas restantes na sua mão devem ser descartadas viradas para cima 
-    // ao lado do tabuleiro para que os jogadores as recrutem em seu turno."
-    const remainingCards = player.hand.filter(c => !cardIds.includes(c.id));
+    // 3. Atualizar localização das cartas do bando
+    await this.prisma.card.updateMany({
+      where: { id: { in: cardIds } },
+      data: { location: 'BAND', order: null }
+    });
 
+    // 4. Regra de Ouro do Descarte (Mão -> Mercado)
+    const remainingCards = player.hand.filter(c => !cardIds.includes(c.id));
     if (remainingCards.length > 0) {
-      const remainingIds = remainingCards.map(c => c.id);
-      
       await this.prisma.card.updateMany({
-        where: { id: { in: remainingIds } },
-        data: { 
-          location: 'MARKET', // Vão para o mercado/tabuleiro
-          ownerId: null,      // Perdem o dono
-          order: null         // Não voltam para o deck
-        }
+        where: { id: { in: remainingCards.map(c => c.id) } },
+        data: { location: 'MARKET', ownerId: null }
       });
-      console.log(`♻️  ${remainingCards.length} cartas foram movidas para o mercado.`);
     }
 
-    // 6. Habilidades de Tribo (Opcional para a próxima etapa)
-    // Aqui você chamaria this.abilityService.execute(leader.tribe, ...)
+    await this._loadState(this.state.id);
+  }
+
+  async drawFromMarket(playerId, cardId) {
+    await this.prisma.card.update({
+      where: { id: cardId },
+      data: { location: 'HAND', ownerId: playerId }
+    });
+    await this._loadState(this.state.id);
   }
 
   async _revealToMarket() {
-    // Pega a carta do topo do deck
     const card = await this.prisma.card.findFirst({
-      where: { location: 'DECK', gameStateId: this.state.id },
+      where: { gameStateId: this.state.id, location: 'DECK' },
       orderBy: { order: 'asc' }
     });
 
@@ -281,11 +255,28 @@ async handlePlayBand(player, cardIds, leaderId) {
     }
   }
 
-  async drawFromMarket(playerId, cardId) {
-    // Apenas move do mercado para a mão
-    await this.prisma.card.update({
-      where: { id: cardId },
-      data: { location: 'HAND', ownerId: playerId }
+  async evaluateEndAge() {
+    const results = this.scoreCalculator.calculateAgeGlory(this.state);
+    
+    // Atualiza pontos dos jogadores no banco
+    for (const res of results) {
+      await this.prisma.player.update({
+        where: { id: res.playerId },
+        data: { points: { increment: res.gloryEarned } }
+      });
+    }
+
+    // Incrementa Era
+    const nextAge = this.state.currentAge + 1;
+    await this.prisma.gameState.update({
+      where: { id: this.state.id },
+      data: { currentAge: nextAge }
     });
+
+    if (nextAge > 3) {
+      console.log("🏆 Jogo Finalizado!");
+    } else {
+      await this.startNewAge();
+    }
   }
 }
