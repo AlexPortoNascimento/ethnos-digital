@@ -20,14 +20,14 @@ export class GameEngine {
    * Configuração inicial de uma nova partida
    */
   async setupNewGame(playerNames) {
-    // Reinos padrão conforme o manual (Cores/Nomes)
+    // Reinos configurados como as CORES reais do tabuleiro e suas pontuações oficiais
     const kingdomsData = [
-      { name: 'GIANT', gloryAge1: 0, gloryAge2: 0, gloryAge3: 0 },
-      { name: 'WIZARD', gloryAge1: 0, gloryAge2: 0, gloryAge3: 0 },
-      { name: 'TROLL', gloryAge1: 0, gloryAge2: 0, gloryAge3: 0 },
-      { name: 'ORC', gloryAge1: 0, gloryAge2: 0, gloryAge3: 0 },
-      { name: 'DWARVE', gloryAge1: 0, gloryAge2: 0, gloryAge3: 0 },
-      { name: 'ELF', gloryAge1: 0, gloryAge2: 0, gloryAge3: 0 },
+      { name: 'RED', gloryAge1: 1, gloryAge2: 3, gloryAge3: 6 },     
+      { name: 'BLUE', gloryAge1: 1, gloryAge2: 3, gloryAge3: 6 },    
+      { name: 'ORANGE', gloryAge1: 2, gloryAge2: 4, gloryAge3: 8 },  
+      { name: 'GREY', gloryAge1: 2, gloryAge2: 4, gloryAge3: 8 },    
+      { name: 'YELLOW', gloryAge1: 3, gloryAge2: 5, gloryAge3: 10 }, 
+      { name: 'GREEN', gloryAge1: 3, gloryAge2: 5, gloryAge3: 10 },  
     ];
 
     const game = await this.prisma.$transaction(async (tx) => {
@@ -37,7 +37,7 @@ export class GameEngine {
           currentAge: 1,
           dragonsFound: 0,
           gameStarted: true,
-          activeTribes: "GIANT,WIZARD,TROLL,ORC,DWARVE,ELF"
+          activeTribes: "GIANT,WIZARD,TROLL,SKELETON,DWARVE,ELF"
         }
       });
 
@@ -52,10 +52,24 @@ export class GameEngine {
         });
       }
 
-      // 3. Cria os Reinos
+      // 3. Cria os Reinos baseados nas CORES
+      // Usando upsert para evitar o bloqueio de restrição unique caso o schema não tenha sido alterado
       for (const k of kingdomsData) {
-        await tx.kingdom.create({
-          data: { ...k, gameStateId: newGame.id }
+        await tx.kingdom.upsert({
+          where: { name: k.name },
+          update: {
+            gameStateId: newGame.id,
+            gloryAge1: k.gloryAge1,
+            gloryAge2: k.gloryAge2,
+            gloryAge3: k.gloryAge3
+          },
+          create: { 
+            name: k.name,
+            gloryAge1: k.gloryAge1,
+            gloryAge2: k.gloryAge2,
+            gloryAge3: k.gloryAge3,
+            gameStateId: newGame.id 
+          }
         });
       }
 
@@ -105,7 +119,7 @@ export class GameEngine {
       dragonsFound: data.dragonsFound,
       players: data.players.map(p => ({
         ...p,
-        hand: p.cards // Mapeia para facilitar acesso na UI
+        hand: p.cards 
       })),
       kingdoms: data.kingdoms,
       market: data.cards
@@ -113,28 +127,32 @@ export class GameEngine {
   }
 
   /**
-   * Inicializa uma Era (Age) conforme Manual p. 5
+   * Inicializa uma Era (Age) conforme Manual p. 5 e p. 11
    */
   async startNewAge() {
     console.log(`--- Iniciando Era ${this.state.currentAge} ---`);
 
-    // 1. Reset de Dragões
     await this.prisma.gameState.update({
       where: { id: this.state.id },
       data: { dragonsFound: 0 }
     });
 
-    // 2. Preparar baralho (DeckService lida com o shuffle e ordem)
     await this.deckService.setupDeckForNewAge(this.state.id, this.state.players.length);
 
-    // 3. Distribuição inicial: 1 carta para cada jogador
-    for (const player of this.state.players) {
-      await this.drawCard(player.id);
+    if (this.state.currentAge === 1) {
+      for (const player of this.state.players) {
+        await this.drawCard(player.id);
+      }
     }
 
-    // 4. Mercado inicial: 2 cartas por jogador
-    const marketSize = this.state.players.length * 2;
-    for (let i = 0; i < marketSize; i++) {
+    const targetMarketSize = this.state.players.length * 2;
+    
+    await this.prisma.card.updateMany({
+      where: { gameStateId: this.state.id, location: 'MARKET' },
+      data: { location: 'OUT_OF_GAME' }
+    });
+
+    for (let i = 0; i < targetMarketSize; i++) {
       await this._revealToMarket();
     }
 
@@ -160,7 +178,6 @@ export class GameEngine {
 
       this.state.dragonsFound = updatedGame.dragonsFound;
 
-      // Remove dragão do jogo
       await this.prisma.card.update({
         where: { id: card.id },
         data: { location: 'OUT_OF_GAME' }
@@ -170,7 +187,6 @@ export class GameEngine {
         return await this.evaluateEndAge();
       }
 
-      // Recursão: compra a próxima após achar um dragão
       return this.drawCard(playerId);
     }
 
@@ -192,8 +208,8 @@ export class GameEngine {
 
     const leader = selectedCards.find(c => c.id === leaderId);
 
-    // 1. Posicionar Marcador de Controle
-    const targetKingdom = this.state.kingdoms.find(k => k.name === leader.color);
+    // 1. Posicionar Marcador de Controle no Reino correspondente à Cor do Líder
+    const targetKingdom = this.state.kingdoms.find(k => k.name === leader.color.toUpperCase());
     if (targetKingdom) {
       const canPlace = this.moveValidator.canPlaceMarker(player, targetKingdom, selectedCards.length);
       if (canPlace) {
@@ -256,10 +272,8 @@ export class GameEngine {
   }
 
   async evaluateEndAge() {
-    // 1. Calcula a glória da era atual
     const results = this.scoreCalculator.calculateAgeGlory(this.state);
     
-    // 2. Atualiza pontos dos jogadores no banco de dados
     for (const res of results) {
       await this.prisma.player.update({
         where: { id: res.playerId },
@@ -267,15 +281,13 @@ export class GameEngine {
       });
     }
 
-    // 3. Incrementa a Era tanto localmente (memória) quanto no banco
-    this.state.currentAge += 1; // CORREÇÃO: Atualiza a memória para o teste passar!
+    this.state.currentAge += 1; 
 
     await this.prisma.gameState.update({
       where: { id: this.state.id },
       data: { currentAge: this.state.currentAge }
     });
 
-    // 4. Verifica fim de jogo ou reinicia o deck para a próxima Era
     if (this.state.currentAge > 3) {
       console.log("🏆 Jogo Finalizado!");
     } else {

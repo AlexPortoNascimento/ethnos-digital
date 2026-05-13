@@ -2,32 +2,34 @@ import chalk from 'chalk';
 import Table from 'cli-table3';
 
 export class Renderer {
-  
-
-  // Mapeamento de cores para as Tribos/Cartas
+  // Mapeamento unificado e tolerante a falhas (reinos e cores padrão)
   static colorMap = {
+    // Tribos / Reinos
     'giant': chalk.red,
-    'troll': chalk.hex('#FFA500'),
+    'troll': chalk.hex('#FFA500'), // Laranja
     'skeleton': chalk.gray,
     'dwarf': chalk.yellow,
+    'dwarve': chalk.yellow,
     'elf': chalk.green,
     'wizard': chalk.blue,
     'orc': chalk.magenta,
 
-    red: chalk.red,
-    blue: chalk.blue,
-    green: chalk.green,
-    yellow: chalk.yellow,
-    purple: chalk.magenta,
-    orange: chalk.hex('#FFA500'), // Laranja via Hex para precisão
-    grey: chalk.gray,
-    white: chalk.white,
-    none: chalk.white
+    // Cores puras
+    'red': chalk.red,
+    'blue': chalk.blue,
+    'green': chalk.green,
+    'yellow': chalk.yellow,
+    'purple': chalk.magenta,
+    'orange': chalk.hex('#FFA500'),
+    'grey': chalk.gray,
+    'white': chalk.white,
+    'none': chalk.white,
+    'dragon': chalk.bgRed.white
   };
 
   static getStyle(colorName) {
     if (!colorName) return chalk.white;
-    const color = colorName?.toLowerCase();
+    const color = colorName.toLowerCase().trim();
     return this.colorMap[color] || chalk.white;
   }
 

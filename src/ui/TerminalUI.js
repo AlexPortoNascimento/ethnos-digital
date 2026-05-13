@@ -129,7 +129,6 @@ export class TerminalUI {
   showHand(player) {
     console.log(chalk.bold(`\nSUA MÃO:`));
     
-    // CORRIGIDO: de player.hand para player.cards
     const cards = player.hand || []; 
     
     if (cards.length === 0) {
@@ -138,7 +137,8 @@ export class TerminalUI {
     }
 
     const handStr = cards.map(c => {
-      const style = Renderer.colorMap[c.color.toLowerCase()] || chalk.white;
+      // Usa o método estático getStyle que criamos e corrigimos no Renderer
+      const style = Renderer.getStyle(c.color || c.tribe);
       return style(`[${c.tribe}]`);
     }).join(' | ');
 
