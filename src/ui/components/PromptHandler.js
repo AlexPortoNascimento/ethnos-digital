@@ -106,7 +106,7 @@ export class PromptHandler {
   // Métodos de Setup (Início do Jogo)
   async askPlayerCount() {
     const { count } = await inquirer.prompt([{
-      type: 'list', // Corrigido de 'select' para 'list' (padrão Inquirer)
+      type: 'select',
       name: 'count',
       message: 'Quantas pessoas vão jogar?',
       choices: [
