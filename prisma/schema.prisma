@@ -9,96 +9,87 @@ datasource db {
   url      = "file:./dev.db"
 }
 
-// Representação das Cartas
 model Card {
   id        Int      @id @default(autoincrement())
-  tribe     String   // Ex: "GIANT", "WIZARD", "SKELETON"
-  color     String   // Ex: "RED", "BLUE", "ORANGE", "PURPLE", "GREEN", "GREY", "NONE"
+  tribe     String
+  color     String
   isDragon  Boolean  @default(false)
-  
-  // Localização da carta para controle de fluxo
-  // Valores: "DECK", "MARKET", "HAND", "BAND", "DISCARD"
   location  String   @default("DECK")
-  
-  // Ordem no baralho para garantir que os dragões fiquem no terço final (Regra pág. 4)
   order     Int?
 
-  // Relacionamentos
-  ownerId   Int?     // Referência ao Player se estiver na mão ("HAND")
+  // RELAÇÃO COM GAMESTATE: Para sabermos de qual jogo é esta carta
+  gameStateId Int?
+  gameState   GameState? @relation(fields: [gameStateId], references: [id])
+
+  ownerId   Int?
   owner     Player?  @relation(fields: [ownerId], references: [id])
   
-  bandId    Int?     // Referência ao Bando se a carta fizer parte de um
+  bandId    Int?
   band      Band?    @relation(fields: [bandId], references: [id], name: "BandMembers")
 
-  // Relacionamento inverso para identificar se esta carta é a líder de um bando
   isLeaderOf Band?   @relation(name: "BandLeader")
 }
 
-// Representação do Jogador
 model Player {
-  id       Int      @id @default(autoincrement())
-  name     String
-  points   Int      @default(0)
-  isBot    Boolean  @default(false)
+  id        Int      @id @default(autoincrement())
+  name      String
+  points    Int      @default(0)
+  isBot     Boolean  @default(false)
 
-  // Relacionamentos
-  cards    Card[]   // Cartas na mão
-  bands    Band[]   // Bandos já baixados por este jogador
-  markers  ControlMarker[] // Marcadores nos reinos
+  // RELAÇÃO COM GAMESTATE
+  gameStateId Int?
+  gameState   GameState? @relation(fields: [gameStateId], references: [id])
+
+  cards     Card[]
+  bands     Band[]
+  markers   ControlMarker[]
 }
 
-// Reinos do Tabuleiro
 model Kingdom {
   id         Int      @id @default(autoincrement())
-  name       String   // Cor do Reino (RED, BLUE, etc.)
-  
-  // Glória disponível por Era (Regra pág. 9)
+  name       String   @unique
   gloryAge1  Int
   gloryAge2  Int
   gloryAge3  Int
 
-  // Marcadores de controle de todos os jogadores neste reino
+  // RELAÇÃO COM GAMESTATE
+  gameStateId Int?
+  gameState   GameState? @relation(fields: [gameStateId], references: [id])
+
   markers    ControlMarker[]
 }
 
-// Tabela pivô para contar quantos marcadores cada jogador tem em cada reino
 model ControlMarker {
   id         Int      @id @default(autoincrement())
   count      Int      @default(0)
-  
   playerId   Int
   player     Player   @relation(fields: [playerId], references: [id])
-  
   kingdomId  Int
   kingdom    Kingdom  @relation(fields: [kingdomId], references: [id])
 
   @@unique([playerId, kingdomId])
 }
 
-// Bandos jogados
 model Band {
   id        Int      @id @default(autoincrement())
-  size      Int      // Quantidade de cartas no bando
-  
-  // O líder agora é uma relação direta com a carta, permitindo acessar sua habilidade (Regra pág. 7)
+  size      Int
   leaderId  Int?     @unique
   leader    Card?    @relation(fields: [leaderId], references: [id], name: "BandLeader")
-  
   playerId  Int
   player    Player   @relation(fields: [playerId], references: [id])
-  
-  // Todas as cartas que compõem este bando (incluindo o líder)
   cards     Card[]   @relation(name: "BandMembers")
 }
 
-// Estado Global do Jogo (Persistência do Save Game)
 model GameState {
-  id              Int      @id @default(1)
-  currentAge      Int      @default(1)
-  dragonsFound    Int      @default(0)
-  currentPlayerId Int      @default(1)
-  gameStarted     Boolean  @default(false)
-  
-  // Armazena as 6 tribos sorteadas para a partida (ex: "GIANT,WIZARD,TROLL...")
-  activeTribes    String?  
+  id              Int       @id @default(1)
+  currentAge      Int       @default(1)
+  dragonsFound    Int       @default(0)
+  currentPlayerId Int       @default(1)
+  gameStarted     Boolean   @default(false)
+  activeTribes    String?
+
+  // CAMPOS DE RELAÇÃO INVERSA: Essencial para o .findUnique({ include: { ... } })
+  players         Player[]
+  kingdoms        Kingdom[]
+  cards           Card[]
 }

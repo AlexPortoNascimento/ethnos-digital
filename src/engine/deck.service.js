@@ -13,9 +13,7 @@ export class DeckService {
    */
   async setupDeckForNewAge(gameStateId, numPlayers) {
     // 1. Recuperar todas as cartas do banco que pertencem a este jogo
-    const allCards = await this.prisma.card.findMany({
-      where: { gameStateId },
-    });
+    const allCards = await this.prisma.card.findMany();
 
     // 2. Separar as cartas especiais (Dragões) das comuns (Tribos)
     const dragons = allCards.filter(c => c.tribe === 'Dragon');
@@ -48,7 +46,6 @@ export class DeckService {
         data: { 
           order: index,
           location: 'DECK', // Garante que voltem ao deck no início da Era
-          slotIndex: null   // Limpa slots de mercado anteriores
         }
       })
     );

@@ -2,22 +2,24 @@ import { PrismaClient } from '@prisma/client';
 import { GameRepository } from './database/game.repository.js';
 import { DeckService } from './engine/deck.service.js';
 import { MoveValidator } from './engine/move.validator.js';
+import { ScoreCalculator } from './engine/score.calculator.js';
 import { GameEngine } from './engine/game.engine.js';
+import { TerminalUI } from './ui/TerminalUI.js';
 
-const prisma = new PrismaClient();
+async function main() {
+  const prisma = new PrismaClient();
 
-// Inicializa as camadas
-const repository = new GameRepository(prisma);
-const deckService = new DeckService(prisma);
-const validator = new MoveValidator();
-const scoreCalculator = new ScoreCalculator();
+  // Inicializa as camadas
+  const repository = new GameRepository(prisma);
+  const deckService = new DeckService(prisma);
+  const validator = new MoveValidator();
+  const scoreCalculator = new ScoreCalculator();
 
-// Injeta as dependências no motor principal
-const engine = new GameEngine(prisma, deckService, validator, scoreCalculator);
+  // Injeta as dependências no motor principal
+  const engine = new GameEngine(prisma, deckService, validator, scoreCalculator);
+  const ui = new TerminalUI(engine);
 
-// Agora o motor está pronto para rodar!
-await engine.initGame('id-do-save-01');
+  await ui.start();
+}
 
-//Teste
-console.log("Ethnos CLI iniciado!")
-console.log("Versão 1.0")
+main().catch(console.error);
