@@ -19,7 +19,7 @@ describe('PromptHandler', () => {
 
     expect(result).toBe('RECRUIT');
     expect(inquirer.prompt).toHaveBeenCalledWith(expect.arrayContaining([
-      expect.objectContaining({ name: 'action', type: 'list' })
+      expect.objectContaining({ name: 'action', type: 'select' })
     ]));
   });
 

@@ -256,9 +256,10 @@ export class GameEngine {
   }
 
   async evaluateEndAge() {
+    // 1. Calcula a glória da era atual
     const results = this.scoreCalculator.calculateAgeGlory(this.state);
     
-    // Atualiza pontos dos jogadores no banco
+    // 2. Atualiza pontos dos jogadores no banco de dados
     for (const res of results) {
       await this.prisma.player.update({
         where: { id: res.playerId },
@@ -266,14 +267,16 @@ export class GameEngine {
       });
     }
 
-    // Incrementa Era
-    const nextAge = this.state.currentAge + 1;
+    // 3. Incrementa a Era tanto localmente (memória) quanto no banco
+    this.state.currentAge += 1; // CORREÇÃO: Atualiza a memória para o teste passar!
+
     await this.prisma.gameState.update({
       where: { id: this.state.id },
-      data: { currentAge: nextAge }
+      data: { currentAge: this.state.currentAge }
     });
 
-    if (nextAge > 3) {
+    // 4. Verifica fim de jogo ou reinicia o deck para a próxima Era
+    if (this.state.currentAge > 3) {
       console.log("🏆 Jogo Finalizado!");
     } else {
       await this.startNewAge();

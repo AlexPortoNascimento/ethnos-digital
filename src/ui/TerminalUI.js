@@ -100,7 +100,7 @@ export class TerminalUI {
   }
 
   async executePlayBand(player) {
-    const pCards = player.cards || [];
+    const pCards = player.hand || [];
     if (pCards.length === 0) {
       throw new Error("Você não tem cartas na mão para jogar um bando!");
     }
@@ -130,7 +130,7 @@ export class TerminalUI {
     console.log(chalk.bold(`\nSUA MÃO:`));
     
     // CORRIGIDO: de player.hand para player.cards
-    const cards = player.cards || []; 
+    const cards = player.hand || []; 
     
     if (cards.length === 0) {
       console.log(chalk.gray('  (Sua mão está vazia)'));
