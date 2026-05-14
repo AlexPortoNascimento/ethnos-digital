@@ -5,17 +5,19 @@ export class Renderer {
   
 
   // Mapeamento de cores para as Tribos/Cartas
-  static colorMap = {
-    // Tribos / Reinos
-    'giant': chalk.red,
-    'troll': chalk.hex('#FFA500'),
-    'skeleton': chalk.gray,
-    'dwarf': chalk.yellow,
-    'dwarve': chalk.yellow,
-    'elf': chalk.green,
-    'wizard': chalk.blue,
-    'minotaur': chalk.cyan,
-  };
+static colorMap = {
+  // Cores Reais do Tabuleiro (O que vem do novo Seed e do GameEngine)
+  'red':    chalk.red,
+  'blue':   chalk.blue,
+  'orange': chalk.hex('#FFA500'),
+  'grey':   chalk.gray,
+  'yellow': chalk.yellow,
+  'green':  chalk.green,
+  
+  // Especiais
+  'dragon': chalk.bgRed.white,
+  'none':   chalk.white
+};
 
   static getStyle(colorName) {
     if (!colorName) return chalk.white;

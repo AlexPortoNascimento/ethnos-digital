@@ -51,40 +51,38 @@ export class PromptHandler {
   async selectBandCards(hand) {
     if (hand.length === 0) return [];
 
+    const choices = hand.map(c => {
+      const style = Renderer.getStyle(c.color);
+      return {
+        name: style(`[${c.tribe}]`),
+        value: c.id
+      };
+    });
+
+    // Adiciona separador e opção de voltar
+    choices.push(new inquirer.Separator());
+    choices.push({ name: '⬅️  Voltar', value: 'BACK' });
+
     const { selectedIds } = await inquirer.prompt([{
       type: 'checkbox',
       name: 'selectedIds',
-      message: 'Selecione as cartas que formarão seu bando (Espaço para marcar, Enter para confirmar):',
-      choices: hand.map(c => {
-        const style = Renderer.getStyle(c.color);
-        return {
-          // REMOVIDO o "(${c.color})" para ficar idêntico ao padrão do resto do jogo
-          name: style(`[${c.tribe}]`),
-          value: c.id
-        };
-      }),
-      loop: false,
-      validate: (answer) => {
-        if (answer.length < 1) return 'Você deve selecionar pelo menos uma carta.';
-        return true;
-      }
+      message: 'Selecione as cartas para o bando (Espaço para marcar, Enter para confirmar):',
+      choices: choices,
+      loop: false
     }]);
+
     return selectedIds;
   }
 
-  /**
-   * Escolha do líder (Regra pág. 7)
-   */
   async selectLeader(selectedCards) {
     const { leaderId } = await inquirer.prompt([{
-      type: 'select',
+      type: 'select', // Ou 'list' conforme sua versão do inquirer
       name: 'leaderId',
-      message: 'Quem será o Líder do bando? (A cor define o Reino e a tribo ativa a habilidade)',
+      message: 'Quem será o Líder do bando? (Define o Reino e a Habilidade)',
       choices: selectedCards.map(c => {
-        // CORREÇÃO: Aplicado o estilo unificado para o menu de escolha do líder
         const style = Renderer.getStyle(c.color);
         return {
-          name: style(`${c.tribe} - Reino ${c.color}`),
+          name: style(`LÍDER: [${c.tribe}] (Reino: ${c.color})`),
           value: c.id
         };
       })

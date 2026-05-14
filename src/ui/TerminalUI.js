@@ -107,23 +107,27 @@ export class TerminalUI {
 
     const selectedIds = await this.prompts.selectBandCards(pCards);
     
-    // Se o jogador der Enter sem marcar nada ou cancelar
-    if (!selectedIds || selectedIds.length === 0) return false;
+    // TRATAMENTO DO VOLTAR: Se 'BACK' estiver no array ou se nada for selecionado
+    if (!selectedIds || selectedIds.length === 0 || selectedIds.includes('BACK')) {
+      return false; 
+    }
 
     const selectedCards = pCards.filter(c => selectedIds.includes(c.id));
 
+    // Validação extra antes de pedir o líder
     if (!this.engine.moveValidator.canPlayBand(selectedCards)) {
-      throw new Error("Bando inválido! Devem ter a mesma Tribo ou mesma Cor.");
+      throw new Error("Bando inválido! Devem ser todos da mesma Tribo ou todos da mesma Cor.");
     }
 
-    // AGORA USA O PROMPT DE LÍDER REAL
     const leaderId = await this.prompts.selectLeader(selectedCards);
 
+    // Executa a jogada no motor
     await this.engine.handlePlayBand(player, selectedIds, leaderId);
-    console.log(chalk.green("\nBando jogado! As outras cartas foram para o mercado."));
+    
+    console.log(chalk.green("\n✅ Bando jogado com sucesso!"));
     await this.prompts.wait();
     
-    return true; // Turno finalizado com sucesso
+    return true; 
   }
 
   showHand(player) {
