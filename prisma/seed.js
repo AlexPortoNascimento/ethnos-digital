@@ -1,30 +1,49 @@
 // prisma/seed.js
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
 
 async function main() {
   console.log('🌱 Preparando dados base...');
+  console.log('🃏 Gerando baralho de cartas global conforme o manual oficial...');
 
-  // Criamos apenas os 6 Reinos, que são fixos no tabuleiro
-  const kingdomData = [
-    { name: 'GIANT', glory1: 1, glory2: 3, glory3: 6 },
-    { name: 'WIZARD', glory1: 1, glory2: 3, glory3: 6 },
-    { name: 'TROLL', glory1: 2, glory2: 4, glory3: 8 },
-    { name: 'ORC', glory1: 2, glory2: 4, glory3: 8 },
-    { name: 'DWARVE', glory1: 3, glory2: 5, glory3: 10 },
-    { name: 'ELF', glory1: 3, glory2: 5, glory3: 10 },
-  ];
+  // 1. Limpa as cartas anteriores para evitar duplicações
+  await prisma.card.deleteMany({});
 
-  for (const k of kingdomData) {
-    await prisma.kingdom.upsert({
-      where: { name: k.name }, // Use o nome como chave única se possível no schema
-      update: {},
-      create: {
-        name: k.name,
-        gloryAge1: k.glory1,
-        gloryAge2: k.glory2,
-        gloryAge3: k.glory3,
-      }
-    });
+  // CORREÇÃO: As cores agora são puras e batem com os Reinos criados no GameEngine
+  const CORES = ['RED', 'BLUE', 'ORANGE', 'GREY', 'YELLOW', 'GREEN'];
+  
+  // Lista das 6 tribos oficiais ativas na partida
+  const TRIBOS_ATIVAS = ['GIANT', 'WIZARD', 'TROLL', 'SKELETON', 'DWARVE', 'ELF'];
+
+  const cardsToCreate = [];
+
+  // 2. Gerar as cartas das Tribos (2 cartas de cada cor para cada tribo)
+  // Isso vai gerar 6 tribos x 6 cores x 2 cópias = 72 cartas de aliados
+  for (const tribe of TRIBOS_ATIVAS) {
+    for (const color of CORES) {
+      cardsToCreate.push({ tribe, color, isDragon: false });
+      cardsToCreate.push({ tribe, color, isDragon: false });
+    }
   }
 
-  console.log('✅ Reinos base prontos.');
+  // 3. Gerar exatamente os 9 Dragões (3 para cada uma das 3 Eras)
+  for (let i = 0; i < 9; i++) {
+    cardsToCreate.push({ tribe: 'DRAGON', color: 'NONE', isDragon: true });
+  }
+
+  // 4. Salva em lote (Bulk Create) no banco de dados através do Prisma
+  await prisma.card.createMany({
+    data: cardsToCreate,
+  });
+
+  console.log(`✅ Baralho populado com sucesso! ${cardsToCreate.length} cartas criadas.`);
 }
+
+main()
+  .catch((e) => {
+    console.error('❌ Erro ao rodar o seed:', e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

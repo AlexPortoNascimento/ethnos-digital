@@ -1,24 +1,10 @@
+// src/ui/components/PromptHandler.js
 import inquirer from 'inquirer';
 import chalk from 'chalk';
+import { Renderer } from './Renderer.js'; // Importamos o Renderer para usar o getStyle unificado
 
 export class PromptHandler {
-  // Mapa de cores seguro (mesmo do Renderer)
-  static colorMap = {
-    red: chalk.red,
-    blue: chalk.blue,
-    green: chalk.green,
-    yellow: chalk.yellow,
-    purple: chalk.magenta,
-    orange: chalk.hex('#FFA500'),
-    grey: chalk.gray,
-    white: chalk.white,
-    none: chalk.white
-  };
-
-  static getStyle(colorName) {
-    return this.colorMap[colorName?.toLowerCase()] || chalk.white;
-  }
-
+  
   async mainMenu() {
     const { action } = await inquirer.prompt([{
       type: 'select',
@@ -38,10 +24,13 @@ export class PromptHandler {
       new inquirer.Separator('--- Mercado ---')
     ];
 
-    marketCards.forEach(c => {
-      const style = PromptHandler.getStyle(c.color);
+   marketCards.forEach(c => {
+      // Pega o estilo baseado na cor da carta (ex: 'GIANT', 'ELF', 'WIZARD')
+      const style = Renderer.getStyle(c.color);
+      
       choices.push({
-        name: style(`[${c.tribe}]`),
+        // REMOVIDO o "Cor: ..." para exibir apenas o bloco da tribo colorido
+        name: style(`[${c.tribe}]`), 
         value: c.id
       });
     });
@@ -53,7 +42,8 @@ export class PromptHandler {
       type: 'select',
       name: 'target',
       message: 'Escolha uma carta para sua mão:',
-      choices
+      choices,
+      loop: false
     }]);
     return target;
   }
@@ -66,12 +56,14 @@ export class PromptHandler {
       name: 'selectedIds',
       message: 'Selecione as cartas que formarão seu bando (Espaço para marcar, Enter para confirmar):',
       choices: hand.map(c => {
-        const style = PromptHandler.getStyle(c.color);
+        const style = Renderer.getStyle(c.color);
         return {
-          name: style(`${c.tribe} (${c.color})`),
+          // REMOVIDO o "(${c.color})" para ficar idêntico ao padrão do resto do jogo
+          name: style(`[${c.tribe}]`),
           value: c.id
         };
       }),
+      loop: false,
       validate: (answer) => {
         if (answer.length < 1) return 'Você deve selecionar pelo menos uma carta.';
         return true;
@@ -81,7 +73,7 @@ export class PromptHandler {
   }
 
   /**
-   * NOVO: Escolha do líder (Regra pág. 7)
+   * Escolha do líder (Regra pág. 7)
    */
   async selectLeader(selectedCards) {
     const { leaderId } = await inquirer.prompt([{
@@ -89,7 +81,8 @@ export class PromptHandler {
       name: 'leaderId',
       message: 'Quem será o Líder do bando? (A cor define o Reino e a tribo ativa a habilidade)',
       choices: selectedCards.map(c => {
-        const style = PromptHandler.getStyle(c.color);
+        // CORREÇÃO: Aplicado o estilo unificado para o menu de escolha do líder
+        const style = Renderer.getStyle(c.color);
         return {
           name: style(`${c.tribe} - Reino ${c.color}`),
           value: c.id
@@ -106,7 +99,7 @@ export class PromptHandler {
   // Métodos de Setup (Início do Jogo)
   async askPlayerCount() {
     const { count } = await inquirer.prompt([{
-      type: 'list', // Corrigido de 'select' para 'list' (padrão Inquirer)
+      type: 'select',
       name: 'count',
       message: 'Quantas pessoas vão jogar?',
       choices: [

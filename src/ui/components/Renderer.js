@@ -6,23 +6,15 @@ export class Renderer {
 
   // Mapeamento de cores para as Tribos/Cartas
   static colorMap = {
+    // Tribos / Reinos
     'giant': chalk.red,
     'troll': chalk.hex('#FFA500'),
     'skeleton': chalk.gray,
     'dwarf': chalk.yellow,
+    'dwarve': chalk.yellow,
     'elf': chalk.green,
     'wizard': chalk.blue,
-    'orc': chalk.magenta,
-
-    red: chalk.red,
-    blue: chalk.blue,
-    green: chalk.green,
-    yellow: chalk.yellow,
-    purple: chalk.magenta,
-    orange: chalk.hex('#FFA500'), // Laranja via Hex para precisão
-    grey: chalk.gray,
-    white: chalk.white,
-    none: chalk.white
+    'minotaur': chalk.cyan,
   };
 
   static getStyle(colorName) {
