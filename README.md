@@ -86,8 +86,6 @@ npm start
 
 2026.1 - Universidade Federal Fluminense
 
-## Integrantes
+## Integrante
 
 - Alexandre Nascimento
-- Matheus Sena
-- Rodrigo Teixeira
