@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "db:reset": "npx prisma migrate dev && node prisma/seed.js",
+    "db:reset": "npx prisma migrate reset && node prisma/seed.js",
     "setup": "npm install && npm run db:reset",
     "prepare": "husky install",
     "test": "vitest run",

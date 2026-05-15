@@ -21,7 +21,7 @@ export class TerminalUI {
   }
 
   async start() {
-    await this.ensureGameIsReady(); 
+    await this.ensureGameIsReady();
 
     console.log(chalk.gray("Iniciando interface gráfica..."));
 
@@ -32,12 +32,39 @@ export class TerminalUI {
 
     while (this.engine.state.currentAge <= 3) {
       for (const player of this.engine.state.players) {
-        if (this.engine.state.currentAge > 3) break;
+        if (this.engine.state.ageEnded || this.engine.state.currentAge > 3) break;
+
         await this.runTurn(player);
       }
     }
     
+    await this.engine.initGame(this.engine.state.id);
+    const finalPlayers = [...this.engine.state.players];
+
+    finalPlayers.sort((a, b) => b.points - a.points);
+
+    console.log('\n' + '='.repeat(40));
+    console.log(chalk.bold.yellow("      🏆 CLASSICAÇÃO FINAL 🏆      "));
+    console.log('='.repeat(40));
+
+    finalPlayers.forEach((player, index) => {
+      const position = index + 1;
+      let logLine = `${position}º Lugar: ${player.name} - ${player.points} pontos`;
+      
+      if (position === 1) {
+        console.log(chalk.bold.gold ? chalk.bold.yellow(logLine) : chalk.bold.cyan(logLine));
+      } else {
+        console.log(logLine);
+      }
+    });
+
+    console.log('='.repeat(40));
+    
+    const winner = finalPlayers[0];
+    console.log(chalk.bgGreen.black.bold(`\n 🎉 PARABÉNS ${winner.name.toUpperCase()} PELA VITÓRIA! 🥂 `));
+
     console.log(chalk.bold.green("\nFIM DE JOGO! OBRIGADO POR JOGAR."));
+    process.exit();
   }
 
   async runTurn(player) {
@@ -47,9 +74,15 @@ export class TerminalUI {
     while (!turnEnded) {
       // 1. Renderização (Sempre atualiza o estado vindo do banco)
       await this.engine.initGame(this.engine.state.id);
-      
+
+      if (this.engine.state.ageEnded) break;
+
       // Buscamos a versão mais recente do jogador dentro do estado atualizado
       const freshPlayer = this.engine.state.players.find(p => p.id === player.id);
+
+      if (this.engine.state.ageEnded || this.engine.state.currentAge > initialAge) {
+        await this.prompts.wait();
+      }
 
       Renderer.renderHeader(this.engine.state, freshPlayer);
       Renderer.renderKingdoms(this.engine.state.kingdoms);
@@ -84,19 +117,45 @@ export class TerminalUI {
     }
 
     const target = await this.prompts.selectRecruitSource(this.engine.state.market);
-    
-    // TRATAMENTO DO BOTÃO VOLTAR
-    if (target === 'BACK') {
-      return false; // Retorna false para o loop do runTurn continuar no mesmo jogador
-    }
+
+    if (target === 'BACK') return false;
 
     if (target === 'DECK') {
-      await this.engine.drawCard(player.id, 'DECK');
+      let drawComplete = false;
+
+      while (!drawComplete) {
+        const result = await this.engine.drawCard(player.id);
+
+        if (result.type === 'DRAGON') {
+          // PRIMEIRA CONFIRMAÇÃO: O aviso do dragão
+          console.log('\n' + '='.repeat(40));
+          console.log(chalk.bgRed.white.bold(` 🔥 CUIDADO! UM DRAGÃO FOI REVELADO! (${result.count}/3) `));
+          console.log('='.repeat(40));
+
+          await this.prompts.wait(); // Espera o primeiro Enter
+
+          if (result.endOfAge) {
+            console.log(chalk.red.bold("\nO TERCEIRO DRAGÃO ACORDOU. A ERA TERMINOU!"));
+            drawComplete = true; // Para o loop de compra
+          } else {
+            console.log(chalk.yellow("\nComo não foi o terceiro, você deve comprar outra carta..."));
+            // O loop continua e chama drawCard novamente para o mesmo jogador
+          }
+        } else {
+          // Carta normal comprada com sucesso
+          console.log(chalk.green(`\n✅ Você recrutou um ${result.card.tribe} para sua mão.`));
+          drawComplete = true;
+        }
+      }
     } else {
+      // Recrutamento do Mercado
       await this.engine.drawFromMarket(player.id, target);
+      console.log(chalk.green("\n✅ Carta do mercado adicionada à sua mão."));
     }
 
-    return true; // Turno finalizado com sucesso
+    // SEGUNDA CONFIRMAÇÃO: O "pressione enter para continuar" geral do turno
+    await this.prompts.wait();
+    return true;
   }
 
   async executePlayBand(player) {
@@ -106,10 +165,10 @@ export class TerminalUI {
     }
 
     const selectedIds = await this.prompts.selectBandCards(pCards);
-    
+
     // TRATAMENTO DO VOLTAR: Se 'BACK' estiver no array ou se nada for selecionado
     if (!selectedIds || selectedIds.length === 0 || selectedIds.includes('BACK')) {
-      return false; 
+      return false;
     }
 
     const selectedCards = pCards.filter(c => selectedIds.includes(c.id));
@@ -123,18 +182,18 @@ export class TerminalUI {
 
     // Executa a jogada no motor
     await this.engine.handlePlayBand(player, selectedIds, leaderId);
-    
+
     console.log(chalk.green("\n✅ Bando jogado com sucesso!"));
     await this.prompts.wait();
-    
-    return true; 
+
+    return true;
   }
 
   showHand(player) {
     console.log(chalk.bold(`\nSUA MÃO:`));
-    
-    const cards = player.hand || []; 
-    
+
+    const cards = player.hand || [];
+
     if (cards.length === 0) {
       console.log(chalk.gray('  (Sua mão está vazia)'));
       return;
