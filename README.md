@@ -82,6 +82,8 @@ npm start
 
 > Importante: Este projeto é uma versão simplificada para fins educacionais. Não inclui as tribos Merfolks ou Orcs.
 
+> Os documentos referentes ao monitoramento do projeto e os slides da apresentação estão disponíveis na pasta `/docs`
+
 ---
 
 2026.1 - Universidade Federal Fluminense
