@@ -9,88 +9,88 @@ export class DeckService {
   }
 
   /**
-   * Prepara o baralho para uma nova Era.
-   * @param {number} gameStateId - ID do estado do jogo atual.
-   * @param {number} numPlayers - Número de jogadores para calcular o mercado.
+   * Prepara o baralho para uma nova Era seguindo estritamente o Manual.
+   * @param {number} gameStateId - ID do jogo.
+   * @param {number} numPlayers - Usado para definir o tamanho do mercado (2 * numPlayers).
    */
   async setupDeckForNewAge(gameStateId, numPlayers) {
     const gameId = parseInt(gameStateId);
-    // 1. Verificar se este jogo já possui cartas vinculadas a ele (Eras 2 ou 3)
-    let gameCards = await this.prisma.card.findMany({
+
+    // 1. Carregar todas as cartas vinculadas ao jogo
+    let allCards = await this.prisma.card.findMany({
       where: { gameStateId: gameId }
     });
 
-    // Se for a Era 1, o jogo não tem cartas ainda. Vamos pegar as cartas globais do Seed
-    // e associá-las a este jogo.
-    if (gameCards.length === 0) {
-      console.log(`🃏 Inicializando baralho da Era 1 para o Jogo #${gameId}...`);
-
-      // Buscamos as cartas base criadas pelo seed
-      const baseCards = await this.prisma.card.findMany({
-        where: { gameStateId: null }
-      });
-
-      if (baseCards.length === 0) {
-        throw new Error("Nenhuma carta base encontrada no banco de dados. Rode 'npx prisma db seed' primeiro.");
-      }
-
-      // Vincula todas as cartas do seed para este jogo específico
+    // Setup inicial (Era 1) se não houver cartas
+    if (allCards.length === 0) {
+      const baseCards = await this.prisma.card.findMany({ where: { gameStateId: null } });
+      if (baseCards.length === 0) throw new Error("Execute o seed primeiro!");
+      
       await this.prisma.card.updateMany({
         where: { gameStateId: null },
         data: { gameStateId: gameId }
       });
-
-      // Recarrega as cartas agora devidamente vinculadas
-      gameCards = await this.prisma.card.findMany({
-        where: { gameStateId: gameId }
-      });
-    } else {
-      console.log(`🃏 Recolhendo e reembaralhando cartas para a próxima Era do Jogo #${gameId}...`);
+      allCards = await this.prisma.card.findMany({ where: { gameStateId: gameId } });
     }
 
-    // 2. CORREÇÃO DA CAIXA ALTA: Filtrar usando 'DRAGON' em maiúsculo (conforme gerado no seed)
-    // Recolhemos também para o deck as cartas que porventura estavam no mercado ou descartadas,
-    // mas mantemos as cartas que estão na mão dos jogadores ('HAND') intocadas se o manual mandar reter,
-    // ou resetamos tudo que não for HAND. No Ethnos, as mãos continuam entre as Eras!
-    const cardsToShuffle = gameCards.filter(c => c.location !== 'HAND');
-
-    const dragons = cardsToShuffle.filter(c => c.tribe?.toUpperCase() === 'DRAGON' || c.isDragon === true );
-    const tribeCards = cardsToShuffle.filter(c => c.tribe?.toUpperCase() !== 'DRAGON' && c.isDragon !== true);
-    
-    // 3. Embaralhamento inicial das cartas de tribo
-    let mainDeck = this._shuffle(tribeCards);
-
-    // 4. Regra de Início de Era (Manual p. 5):
-    // Divisão do deck para colocar os dragões na metade inferior
-    const midPoint = Math.floor(mainDeck.length / 2);
-    const topHalf = mainDeck.slice(0, midPoint);
-    const bottomHalf = mainDeck.slice(midPoint);
-
-    // 5. Adicionar Dragões à metade inferior e embaralhar essa metade
-    const bottomWithDragons = this._shuffle([...bottomHalf, ...dragons]);
-
-    // 6. Recombinar o baralho (Top + Bottom com Dragões)
-    const finalDeckOrder = [...topHalf, ...bottomWithDragons];
-
-    // 7. Persistir a nova ordem e a localização 'DECK' no banco
-    const updates = finalDeckOrder.map((card, index) =>
-      this.prisma.card.update({
-        where: { id: card.id },
-        data: {
-          order: index + 1, // Evita order 0 para não confundir com falsy
-          location: 'DECK',
-          ownerId: null // Garante que perderam o dono antigo (caso estivessem no mercado)
-        }
-      })
+    // 2. RECOLHIMENTO TOTAL (Manual Pág. 11)
+    // "Discard all Ally cards, both from players' hands and from played Bands."
+    // No código: todas as cartas voltam, independente da location antiga.
+    const dragons = allCards.filter(c => 
+      c.tribe?.toUpperCase() === 'DRAGON' || c.isDragon === true
+    );
+    const tribeCards = allCards.filter(c => 
+      c.tribe?.toUpperCase() !== 'DRAGON' && c.isDragon !== true
     );
 
-    await this.prisma.$transaction(updates);
+    // 3. MONTAGEM DO MERCADO (Manual Pág. 4)
+    // "Draw cards from the deck and place them face up... twice as many as the number of players."
+    // IMPORTANTE: Isso é feito ANTES de colocar os dragões no deck.
+    let shuffledTribes = this._shuffle(tribeCards);
+    
+    const marketSize = numPlayers * 2;
+    const marketCards = shuffledTribes.slice(0, marketSize);
+    const remainingTribes = shuffledTribes.slice(marketSize);
 
-    return finalDeckOrder;
+    // 4. DIVISÃO DO DECK E DRAGÕES (Manual Pág. 5)
+    // Divide as tribos restantes ao meio e coloca os 3 dragões na metade inferior.
+    const midPoint = Math.floor(remainingTribes.length / 2);
+    const topHalf = remainingTribes.slice(0, midPoint);
+    const bottomHalf = remainingTribes.slice(midPoint);
+
+    // Adiciona os dragões e reembaralha apenas a metade de baixo
+    const bottomWithDragons = this._shuffle([...bottomHalf, ...dragons]);
+
+    // Baralho final: Metade superior (sem dragões) + Metade inferior (com dragões)
+    const finalDeck = [...topHalf, ...bottomWithDragons];
+
+    // 5. PERSISTÊNCIA (Transação para garantir integridade)
+    const operations = [];
+
+    // Limpar mãos e bandas antigas, mover para o Mercado
+    marketCards.forEach(c => {
+      operations.push(this.prisma.card.update({
+        where: { id: c.id },
+        data: { location: 'MARKET', order: null, ownerId: null, bandId: null }
+      }));
+    });
+
+    // Atualizar o Deck
+    finalDeck.forEach((c, index) => {
+      operations.push(this.prisma.card.update({
+        where: { id: c.id },
+        data: { location: 'DECK', order: index + 1, ownerId: null, bandId: null }
+      }));
+    });
+
+    await this.prisma.$transaction(operations);
+
+    console.log(`✅ Era preparada: ${marketCards.length} no mercado, ${finalDeck.length} no deck.`);
+    return { market: marketCards, deck: finalDeck };
   }
 
   /**
-   * Algoritmo Fisher-Yates para embaralhamento puro.
+   * Algoritmo Fisher-Yates
    * @private
    */
   _shuffle(array) {

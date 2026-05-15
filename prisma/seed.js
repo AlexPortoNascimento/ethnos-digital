@@ -26,8 +26,8 @@ async function main() {
     }
   }
 
-  // 3. Gerar exatamente os 9 Dragões (3 para cada uma das 3 Eras)
-  for (let i = 0; i < 9; i++) {
+  // 3. Gerar exatamente os 3 Dragões
+  for (let i = 0; i < 3; i++) {
     cardsToCreate.push({ tribe: 'DRAGON', color: 'NONE', isDragon: true });
   }
 
