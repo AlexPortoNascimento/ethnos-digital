@@ -15,7 +15,6 @@ export class DeckService {
    */
   async setupDeckForNewAge(gameStateId, numPlayers) {
     const gameId = parseInt(gameStateId);
-
     // 1. Verificar se este jogo já possui cartas vinculadas a ele (Eras 2 ou 3)
     let gameCards = await this.prisma.card.findMany({
       where: { gameStateId: gameId }
@@ -25,7 +24,7 @@ export class DeckService {
     // e associá-las a este jogo.
     if (gameCards.length === 0) {
       console.log(`🃏 Inicializando baralho da Era 1 para o Jogo #${gameId}...`);
-      
+
       // Buscamos as cartas base criadas pelo seed
       const baseCards = await this.prisma.card.findMany({
         where: { gameStateId: null }
@@ -55,9 +54,9 @@ export class DeckService {
     // ou resetamos tudo que não for HAND. No Ethnos, as mãos continuam entre as Eras!
     const cardsToShuffle = gameCards.filter(c => c.location !== 'HAND');
 
-    const dragons = cardsToShuffle.filter(c => c.tribe === 'DRAGON' || c.isDragon === true);
-    const tribeCards = cardsToShuffle.filter(c => c.tribe !== 'DRAGON' && c.isDragon !== true);
-
+    const dragons = cardsToShuffle.filter(c => c.tribe?.toUpperCase() === 'DRAGON' || c.isDragon === true );
+    const tribeCards = cardsToShuffle.filter(c => c.tribe?.toUpperCase() !== 'DRAGON' && c.isDragon !== true);
+    
     // 3. Embaralhamento inicial das cartas de tribo
     let mainDeck = this._shuffle(tribeCards);
 
@@ -74,10 +73,10 @@ export class DeckService {
     const finalDeckOrder = [...topHalf, ...bottomWithDragons];
 
     // 7. Persistir a nova ordem e a localização 'DECK' no banco
-    const updates = finalDeckOrder.map((card, index) => 
+    const updates = finalDeckOrder.map((card, index) =>
       this.prisma.card.update({
         where: { id: card.id },
-        data: { 
+        data: {
           order: index + 1, // Evita order 0 para não confundir com falsy
           location: 'DECK',
           ownerId: null // Garante que perderam o dono antigo (caso estivessem no mercado)
@@ -86,7 +85,7 @@ export class DeckService {
     );
 
     await this.prisma.$transaction(updates);
-    
+
     return finalDeckOrder;
   }
 

@@ -34,7 +34,7 @@ describe('PromptHandler', () => {
 
     expect(result).toEqual([1]);
     const promptConfig = inquirer.prompt.mock.calls[0][0][0];
-    expect(promptConfig.choices).toHaveLength(2);
+    expect(promptConfig.choices).toHaveLength(4);
     expect(promptConfig.choices[0].name).toContain('GIANT');
   });
 });
