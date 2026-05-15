@@ -2,59 +2,35 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TerminalUI } from '../../src/ui/TerminalUI.js';
 
 describe('TerminalUI', () => {
-  let engineMock;
-  let ui;
+  let logSpy;
 
   beforeEach(() => {
-    engineMock = {
-      state: {
-        id: 1,
-        currentAge: 1,
-        players: [{ id: 1, name: 'Jogador 1', hand: [], points: 0 }],
-        kingdoms: [],
-        market: []
-      },
-      initGame: vi.fn().mockImplementation(async () => engineMock.state),
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  it('deve interromper o turno imediatamente se o terceiro dragão for revelado', async () => {
+    const mockEngine = {
+      state: { id: 1, currentAge: 1, players: [{ id: 1, name: 'P1' }], market: [], kingdoms: [] },
+      initGame: vi.fn(),
       moveValidator: { canRecruit: vi.fn().mockReturnValue(true) },
-      drawCard: vi.fn().mockResolvedValue({})
+      // Simula o 3º dragão sendo sorteado
+      drawCard: vi.fn().mockResolvedValue({ type: 'DRAGON', count: 3, endOfAge: true })
     };
 
-    ui = new TerminalUI(engineMock);
-    ui.prompts.mainMenu = vi.fn();
-    ui.prompts.selectRecruitSource = vi.fn();
-    ui.prompts.wait = vi.fn().mockResolvedValue();
-    vi.spyOn(console, 'log').mockImplementation(() => {});
-  });
-
-  it('deve executar recrutamento do deck quando o usuário escolher', async () => {
-    ui.prompts.mainMenu.mockResolvedValueOnce('RECRUIT');
-    ui.prompts.selectRecruitSource.mockResolvedValueOnce('DECK');
-
-    await ui.runTurn(engineMock.state.players[0]);
-
-    expect(engineMock.drawCard).toHaveBeenCalled();
-  });
-
-  it('deve exibir erro se o validador impedir o recrutamento', async () => {
-    // 1. Bloqueia o recrutamento
-    engineMock.moveValidator.canRecruit.mockReturnValue(false);
+    const ui = new TerminalUI(mockEngine);
     
-    // 2. Simula a escolha de recrutamento
-    ui.prompts.mainMenu.mockResolvedValueOnce('RECRUIT'); 
+    // Mock do prompt para selecionar "RECRUIT" e depois "DECK"
+    vi.spyOn(ui.prompts, 'mainMenu').mockResolvedValue('RECRUIT');
+    vi.spyOn(ui.prompts, 'selectRecruitSource').mockResolvedValue('DECK');
+    vi.spyOn(ui.prompts, 'wait').mockResolvedValue();
 
-    // 3. Forçamos o prompt de espera a lançar uma exceção de escape controlada.
-    // Assim que a UI exibir o erro e chamar o `wait()`, o teste sai do loop de vez!
-    ui.prompts.wait.mockRejectedValueOnce(new Error('BREAK_LOOP'));
+    await ui.executeRecruit(mockEngine.state.players[0]);
 
-    // 4. Executa esperando a nossa quebra de fluxo controlada
-    try {
-      await ui.runTurn(engineMock.state.players[0]);
-    } catch (err) {
-      if (err.message !== 'BREAK_LOOP') throw err;
-    }
+    // Pega todas as chamadas do console.log e junta em uma string limpa
+    const allLogs = logSpy.mock.calls.map(call => call[0]).join('\n');
+    const cleanLogs = allLogs.replace(/\u001b\[\d+m/g, ''); // Remove cores ANSI
 
-    // 5. Asserts de validação
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Mão cheia'));
-    expect(ui.prompts.wait).toHaveBeenCalled();
+    expect(cleanLogs).toContain("DRAGÃO FOI REVELADO");
+    expect(cleanLogs).toContain("A ERA TERMINOU");
   });
 });

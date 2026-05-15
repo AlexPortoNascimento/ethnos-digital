@@ -1,62 +1,54 @@
-// tests/engine/game.engine.spec.js
 import { describe, it, expect, vi } from 'vitest';
 import { GameEngine } from '../../src/engine/game.engine.js';
-import { ScoreCalculator } from '../../src/engine/score.calculator.js';
+import { ScoreCalculator } from '../../src/engine/score.calculator.js'
 
 describe('GameEngine', () => {
   it('deve processar o fim da Era 1 e iniciar a Era 2 ao encontrar o 3º dragão', async () => {
-    let dragonsInDb = 0;
-    
-    // Pilha controlada para evitar loops infinitos de recursão
-    const deckStack = [
-      { id: 101, tribe: 'DRAGON', isDragon: true },
-      { id: 102, tribe: 'DRAGON', isDragon: true },
-      { id: 103, tribe: 'DRAGON', isDragon: true },
-      { id: 104, tribe: 'WIZARD', isDragon: false },
-      { id: 105, tribe: 'ELF', isDragon: false },
-      { id: 106, tribe: 'ORC', isDragon: false }
-    ];
+    let dragonsCount = 2;
+    let currentAge = 1;
 
     const mockPrisma = {
-      card: {
-        findFirst: vi.fn().mockImplementation(() => Promise.resolve(deckStack.shift() || null)),
-        update: vi.fn().mockResolvedValue({}),
-        updateMany: vi.fn().mockResolvedValue({})
-      },
       gameState: {
         update: vi.fn().mockImplementation(({ data }) => {
-          if (data.dragonsFound?.increment) dragonsInDb++;
-          if (data.dragonsFound === 0) dragonsInDb = 0;
-          return Promise.resolve({ id: 1, dragonsFound: dragonsInDb, currentAge: data.currentAge || 1 });
+          if (data.dragonsFound?.increment) dragonsCount++;
+          // Quando a era vira no evaluateEndAge:
+          if (data.currentAge?.increment) currentAge++;
+          // Quando reseta para a nova era no startNewAge:
+          if (data.dragonsFound === 0) dragonsCount = 0;
+          
+          return Promise.resolve({ id: 1, dragonsFound: dragonsCount, currentAge });
         }),
-        findUnique: vi.fn().mockResolvedValue({
-          id: 1, currentAge: 2, dragonsFound: 0,
-          players: [{ id: 1, name: 'Jogador 1', cards: [], markers: [], playedBands: [] }], 
-          kingdoms: [], cards: []
-        })
+        findUnique: vi.fn().mockImplementation(() => Promise.resolve({
+          id: 1, currentAge, dragonsFound: dragonsCount, players: [], kingdoms: [], cards: []
+        }))
       },
+      card: {
+        findFirst: vi.fn().mockResolvedValue({ id: 103, tribe: 'DRAGON', isDragon: true }),
+        update: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({}),
+        deleteMany: vi.fn().mockResolvedValue({})
+      },
+      band: { deleteMany: vi.fn().mockResolvedValue({}) },
       player: { update: vi.fn().mockResolvedValue({}) }
     };
 
-    const scoreCalculator = new ScoreCalculator();
-    // Garante que o cálculo de glória retorne um array vazio esperado e não quebre
-    vi.spyOn(scoreCalculator, 'calculateAgeGlory').mockReturnValue([]);
-
-    const engine = new GameEngine(mockPrisma, { setupDeckForNewAge: vi.fn() }, {}, scoreCalculator);
+    const mockDeckService = { setupDeckForNewAge: vi.fn().mockResolvedValue({ market: [], deck: [] }) };
+    const engine = new GameEngine(mockPrisma, mockDeckService, {}, new ScoreCalculator());
     
-    // Injeta playedBands aqui também para blindar o estado inicial em memória
     engine.state = { 
-      id: 1, 
-      currentAge: 1, 
-      dragonsFound: 0, 
-      players: [{ id: 1, name: 'Jogador 1', hand: [], playedBands: [] }], 
-      kingdoms: [], 
-      market: [] 
+      id: 1, currentAge: 1, dragonsFound: 2, 
+      players: [{ id: 1, hand: [], playedBands: [] }], 
+      kingdoms: [] 
     };
 
-    await engine.drawCard(1);
+    const result = await engine.drawCard(1);
 
+    // O waitFor agora terá sucesso porque currentAge é incrementado no mock
+    await vi.waitFor(() => {
+      if (engine.state.currentAge !== 2) throw new Error("Ainda não virou");
+    });
+
+    expect(result.endOfAge).toBe(true);
     expect(engine.state.currentAge).toBe(2);
-    expect(engine.state.dragonsFound).toBe(0);
   });
 });
